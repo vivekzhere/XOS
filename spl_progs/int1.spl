@@ -1,0 +1,93 @@
+// calculate the physical address of stack top
+alias physicalSP S0;
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+// Get system call no. from the stack and put it in a register
+alias sysCallNo S1;
+sysCallNo = [ physicalSP - 1];
+
+// Get arguments from stack and put it in registers
+alias fileName S2;
+fileName = [physicalSP - 3];
+
+alias counter S3; // A register for all loops
+
+if ( sysCallNo == 1) then // Create system call
+		
+		// find a free disk block
+		counter = 0;
+		while(counter < 448) do
+			if( [ DISK_LIST + counter ] == 0) then
+				break;
+			endif;
+			counter = counter + 1;
+		endwhile;
+		
+		// if no free disk block is found return from systemcall with -1
+		if(counter > 447) then
+			[physicalSP - 2] = -1;
+			ireturn;
+		endif;
+		
+		alias basicBlock S4;
+		basicBlock = counter;
+		
+		// search the FAT if file already exist
+		counter = 0;
+		while(counter < 64) do
+			if( fileName == [FAT + counter * 8 + 0] ) then // return from systemcall with 0
+				[physicalSP - 2] = 0;
+				ireturn;
+			endif;
+			counter = counter + 1;
+		endwhile;
+		
+		// search the fat for a free entry
+		alias freeFATEntry S5;
+		freeFATEntry = -1;
+		counter = 0;
+		while(counter < 64) do
+			if( [FAT + counter * 8 + 2] == -1 ) then // free FAT entry found
+				freeFATEntry = counter;
+				break;
+			endif;
+			counter = counter + 1;
+		endwhile;
+		
+		// if no free FAT entry found return from system call with -1
+		if( freeFATEntry == -1) then
+			[physicalSP - 2] = -1;
+			ireturn;
+		endif;
+		
+		// Set the FAT entries for new file
+		[ FAT + freeFATEntry * 8 + 0] = fileName;
+		[ FAT + freeFATEntry * 8 + 1] = 0;
+		[ FAT + freeFATEntry * 8 + 2] =	basicBlock;
+		
+		// Initialise the basic block with -1
+		load(1, basicBlock);
+		counter = 0;
+		while(counter < 512) do
+			[ SCRATCHPAD + counter] = -1;
+			counter = counter + 1;
+		endwhile;
+		store(1, basicBlock);
+		
+		// upadate the disk free list - basicBlock is used
+		[DISK_LIST + basicBlock] = 1;
+		
+		// commit FAT and disk free list to disk
+		store(5, 19); // FAT
+		store(6, 20); // Disk Free List
+		
+		//return from the system call with sucess
+		[physicalSP - 2] = 0;
+		ireturn;		
+endif;
+
+if ( sysCallNo == 4) then // Delete system call
+	ireturn;
+endif;
+
+ireturn;
