@@ -10,6 +10,18 @@ load (10, 4);
 load (11, 5);
 load (12, 6);
 
+// Load Interrupt 2 Routine from disk to memory
+load (13, 7);
+load (14, 8);
+
+// Load Interrupt 3 Routine from disk to memory
+load (15, 9);
+load (16, 10);
+
+// Load Interrupt 4 Routine from disk to memory
+load (17, 11);
+load (18, 12);
+
 // Load Interrupt 7 Routine from disk to memory
 load(23, 17);
 load(24, 18);
@@ -17,6 +29,15 @@ load(24, 18);
 // Load FAT and Disk free list from disk to memory
 load(5, 19); // FAT
 load(6, 20); // Disk Free List
+
+// Initialise system wide open file table
+alias counter S0;
+counter = 0;
+while ( counter <  64) do			// 64 entries, each of size 2 words
+	[ FILE_TABLE + counter*2 + 0] = -1;	// Set FAT Index to -1
+	[ FILE_TABLE + counter*2 + 1] =  0;	// Set File Open Count to 0
+	counter = counter + 1;			// Move to next entry
+endwhile;
 
 [READY_LIST + 0] = 0; // Sets the entry for PID as 0 
 
@@ -38,6 +59,14 @@ PTLR = 4;
 [PTBR + 5] = "01"; // Auxiliary Information for Logical Page 2
 [PTBR + 6] = 28; // Physical Page Number for Logical Page 3 (Stack)
 [PTBR + 7] = "01"; // Auxiliary Information for Logical Page 3 (Stack)
+
+//Initialise per process open file table of init process
+counter = 0;
+while(counter < 8) do
+	[READY_LIST + 15 + counter*2 + 0] = -1; //Pointer to system wide open file table
+	[READY_LIST + 15 + counter*2 + 1] = -1; //LSEEK Position
+	counter = counter + 1;
+endwhile;
 
 [READY_LIST + 1] = 2; // Sets the entry for STATE as Running
 

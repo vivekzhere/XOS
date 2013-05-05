@@ -1,0 +1,108 @@
+// calculate the physical address of stack top
+alias physicalSP S0;
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+// Get system call no. from the stack and put it in a register
+alias sysCallNo S1;
+sysCallNo = [ physicalSP - 1];
+
+// Get arguments from stack and put it in registers
+alias arg S2;
+arg = [physicalSP - 3];
+
+alias counter S3; // A register for all loops
+
+if ( sysCallNo == 2) then // Open system call
+	alias FATEntry S4;
+	FATEntry = -1;
+	// search the FAT if file exist
+	counter = 0;
+	while(counter < 64) do
+		if( arg == [FAT + counter * 8 + 0] ) then // file exists
+			FATEntry = counter;
+			break;
+		endif;
+		counter = counter + 1;
+	endwhile;
+	
+	// If file doesnot exist return with -1
+	if(FATEntry == -1) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+
+	// Checks if file is already opened
+	alias SFTEntry S5;
+	SFTEntry = -1;
+	counter = 0;
+	while(counter < 64) do
+		if([ FILE_TABLE + counter*2 + 0] == FATEntry) then
+			SFTEntry = counter;
+			break;
+		endif;
+		counter = counter + 1;
+	endwhile;
+	
+	// If file not already opened find a free entry in File Table
+	if(SFTEntry == -1) then
+		counter = 0;
+		while(counter < 64) do
+			if([ FILE_TABLE + counter*2 + 0] == -1) then
+				SFTEntry = counter;
+				break;
+			endif;
+			counter = counter + 1;
+		endwhile;
+		
+		//If no free entry is found return from system call with -1
+		if(SFTEntry == -1) then
+			[physicalSP - 2] = -1;
+			ireturn;
+		endif;
+	endif;
+	
+	// calculate pid of current process
+	alias currentPID S6;
+	currentPID = (PTBR - 1024) / 8;
+
+	//calculate the start of pcb of current process
+	alias currentPCB S7;
+	currentPCB = READY_LIST + 32 * currentPID;
+	
+	// Search for free entry in Per process file table
+	alias PFTEntry S8;
+	PFTEntry = -1;
+	counter = 0;
+	while(counter < 8) do
+		if( [currentPCB + 15 + counter*2 + 0] == -1) then //Free entry in per process open file table
+			PFTEntry = counter;
+			break;
+		endif;
+		counter = counter + 1;
+	endwhile;
+	
+	//If no free entry found
+	if(PFTEntry == -1) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+	
+	//Set the entry in Per process open file table
+	[currentPCB + 15 + PFTEntry*2 + 0] = SFTEntry; //Pointer to system wide open file table
+	[currentPCB + 15 + PFTEntry*2 + 1] = 0; // Lseek position
+	
+	//Set the entry in System wide open file table
+	[FILE_TABLE + SFTEntry*2 + 0] = FATEntry; //FAT Index of the file
+	[FILE_TABLE + SFTEntry*2 + 1] = [FILE_TABLE + SFTEntry*2 + 1] + 1; //Increment file open count
+	
+	// Return the filedescriptor - the index in Per process open file table
+	[physicalSP - 2] = PFTEntry;
+	breakpoint;
+	ireturn;
+endif;
+
+if ( sysCallNo == 3) then // Close system call
+	ireturn;
+endif;
+
+ireturn;
