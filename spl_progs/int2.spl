@@ -102,6 +102,42 @@ if ( sysCallNo == 2) then // Open system call
 endif;
 
 if ( sysCallNo == 3) then // Close system call
+	//Check if argument is a file descriptor
+	if( arg < 0 || arg > 7) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+	
+	// calculate pid of current process
+	alias currentPID S4;
+	currentPID = (PTBR - 1024) / 8;
+
+	//calculate the start of pcb of current process
+	alias currentPCB S5;
+	currentPCB = READY_LIST + 32 * currentPID;
+	
+	//Check if file descriptor is valid
+	if( [currentPCB + 15 + arg*2 + 0] == -1) then //pointer to system wide open file table is invalid 
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+	
+	alias SFTEntry S6;
+	SFTEntry = [currentPCB + 15 + arg*2 + 0];
+	
+	//Update system wide open file table
+	[FILE_TABLE + SFTEntry*2 + 1] = [FILE_TABLE + SFTEntry*2 + 1] - 1; //Decrement file open count
+	if( [FILE_TABLE + SFTEntry*2 + 1] == 0) then // file open count is zero
+		[FILE_TABLE + SFTEntry*2 + 0] = -1; // invalidate the entry
+	endif;
+	
+	//Invalidate Per process open file table entry
+	[currentPCB + 15 + arg*2 + 0] = -1; //Pointer to system wide open file table
+	[currentPCB + 15 + arg*2 + 1] = -1; // Lseek position
+	
+	//return from system call with sucess
+	[physicalSP - 2] = 0;
+	breakpoint;
 	ireturn;
 endif;
 
