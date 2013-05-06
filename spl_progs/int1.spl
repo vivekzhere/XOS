@@ -12,8 +12,7 @@ fileName = [physicalSP - 3];
 
 alias counter S3; // A register for all loops
 
-if ( sysCallNo == 1) then // Create system call
-		
+if ( sysCallNo == 1) then // Create system call		
 	// find a free disk block
 	counter = 0;
 	while(counter < 448) do
@@ -68,8 +67,12 @@ if ( sysCallNo == 1) then // Create system call
 	// Initialise the basic block with -1
 	load(1, basicBlock);
 	counter = 0;
-	while(counter < 512) do
+	while(counter < 256) do
 		[ SCRATCHPAD + counter] = -1;
+		counter = counter + 1;
+	endwhile;
+	while(counter < 512) do
+		[ SCRATCHPAD + counter] = "";
 		counter = counter + 1;
 	endwhile;
 	store(1, basicBlock);
@@ -83,10 +86,87 @@ if ( sysCallNo == 1) then // Create system call
 	
 	//return from the system call with sucess
 	[physicalSP - 2] = 0;
+	breakpoint;
 	ireturn;		
 endif;
 
 if ( sysCallNo == 4) then // Delete system call
+	alias FATEntry S4;
+	FATEntry = -1;
+	// search the FAT if file exist
+	counter = 0;
+	while(counter < 64) do
+		if( fileName == [FAT + counter * 8 + 0] ) then // file exists
+			FATEntry = counter;
+			break;
+		endif;
+		counter = counter + 1;
+	endwhile;
+	
+	// If file doesnot exist return with -1
+	if(FATEntry == -1) then
+		[physicalSP - 2] = -1;
+		ireturn;
+	endif;
+
+	// Checks if file is already opened
+	counter = 0;
+	while(counter < 64) do
+		if([ FILE_TABLE + counter*2 + 0] == FATEntry) then
+			[physicalSP - 2] = -1;
+			ireturn;
+		endif;
+		counter = counter + 1;
+	endwhile;
+	
+	// Get the basic block number
+	alias basicBlock S5;
+	basicBlock = [ FAT + FATEntry * 8 + 2];
+	
+	// Empty all the data blocks used
+	counter = 0;
+	while(counter < 256) do
+		alias blockNo S6;
+		load(1, basicBlock); // first load basic block
+		if( [SCRATCHPAD + counter] != -1) then // data block is valid
+			blockNo = [SCRATCHPAD + counter]; 
+			load(1, blockNo); //load the block to scratchpad
+			
+			//clear the block
+			alias temp S7;
+			temp = 0;
+			while(temp < 512) do
+				[SCRATCHPAD + temp] = "";
+				temp = temp + 1;
+			endwhile;
+			store(1, blockNo); //Store back the block			
+			[DISK_LIST + blockNo] = 0; // free the block
+		endif;		
+		counter = counter + 1;
+	endwhile;
+	
+	// clear and free the basic block
+	load(1, basicBlock);
+	counter = 0;
+	while(counter < 512) do
+		[SCRATCHPAD + counter] = "";
+		counter = counter + 1;
+	endwhile;
+	store(1, basicBlock); //Store back the block			
+	[DISK_LIST + basicBlock] = 0; // free the block
+	
+	//Invalidate the FAT entry
+	[ FAT + FATEntry * 8 + 0] = -1;
+	[ FAT + FATEntry * 8 + 1] = 0;
+	[ FAT + FATEntry * 8 + 2] =	-1;
+	
+	// commit FAT and disk free list to disk
+	store(5, 19); // FAT
+	store(6, 20); // Disk Free List
+	
+	//return from the system call with sucess
+	[physicalSP - 2] = 0;
+	breakpoint;
 	ireturn;
 endif;
 
